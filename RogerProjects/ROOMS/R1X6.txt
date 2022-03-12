@@ -1,0 +1,1 @@
+../../scripts/boundary_data/x6/boundary_visualization.txt

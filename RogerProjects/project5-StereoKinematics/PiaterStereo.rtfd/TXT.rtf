@@ -1,0 +1,75 @@
+{\rtf1\ansi\ansicpg1252\cocoartf1265\cocoasubrtf210
+{\fonttbl\f0\fswiss\fcharset0 Helvetica;\f1\froman\fcharset0 TimesNewRomanPSMT;}
+{\colortbl;\red255\green255\blue255;\red0\green0\blue0;\red13\green98\blue18;\red16\green73\blue188;
+}
+\pard\tx560\tx1120\tx1680\tx2240\tx2800\tx3360\tx3920\tx4480\tx5040\tx5600\tx6160\tx6720\pardirnatural
+
+\f0\fs28 \cf2 From: justus.piater@uibk.ac.at\
+Subject: Re: [QUAR] Re: Course notes: Interactive Sensorimotor Intelligence\
+Date: October 26, 2010 at 11:27:59 AM EDT\
+To: Rod Grupen <grupen@cs.umass.edu>\
+\pard\tx560\tx1120\tx1680\tx2240\tx2800\tx3360\tx3920\tx4480\tx5040\tx5600\tx6160\tx6720\pardirnatural
+
+\fs24 \cf2 \
+\pard\pardeftab720
+
+\f1\fs28 \cf3 BTW, I just coded triangulation using algebraic methods...\
+\pard\pardeftab720
+\cf4 \
+can you send that back to me?\
+\pard\pardeftab720
+\cf2 \
+Attached. \'a0Let me know if you need a more explicit description of the\
+algorithm.\
+\
+I did it "the right way" using SVG; it requires linking with "-lgsl\
+-lgslcblas". \'a0Since the linear system is only 2x3, hand-coding\
+Gauss-Jordan elimination and using Roger's matrix code would\
+dramatically shrink the code.\
+\
+triangulate_egocentric() is called from this code that I added to\
+xrobot.c:\
+\
+static void triangulate() \{\
+\'a0double Xbase[2][2], Xworld[2][2]; // [feature][eye]\
+\'a0triangulate_egocentric(eyes, Xbase);\
+\
+\'a0XSetForeground(display, gc, goal_color);\
+\'a0int feature;\
+\'a0for (feature = 0; feature < 2; feature++) \{\
+\'a0\'a0\'a0if (Xbase[feature][X] || Xbase[feature][Y]) \{\
+\'a0\'a0\'a0\'a0\'a0base2world(Xbase[feature], Xworld[feature]);\
+\'a0\'a0\'a0\'a0\'a0draw_circle(W2DX(zoom, Xworld[feature][X]),\
+		\'a0W2DY(zoom, Xworld[feature][Y]), W2DR(zoom, 0.05), FILL);\
+\'a0\'a0\'a0\}\
+\'a0\}\
+#if 0\
+\'a0printf("Features: left B%5.2lf%5.2lf W%5.2lf%5.2lf; right B%5.2lf%5.2lf W%5.2lf%5.2lf\\n",\
+	Xbase[0][0], Xbase[0][1], Xworld[0][0], Xworld[0][1], \
+	Xbase[1][0], Xbase[1][1], Xworld[1][0], Xworld[1][1] );\
+#endif\
+\}\
+\
+static void base2world(double base[2], double world[2]) \{\
+\'a0double p_b[4] = \{ base[X], base[Y], 0, 1 \};\
+\'a0double p_w[4];\
+\
+\'a0matXvec(mobile_base.wTb, p_b, p_w);\
+\
+\'a0world[X] = p_w[0] / p_w[3];\
+\'a0world[Y] = p_w[1] / p_w[3];\
+\}\
+\
+Finally, triangulate() is called from within draw_all().\
+\
+Justus\
+\
+\
+\
+\
+-- \
+Intelligent and Interactive Systems\
+Institute of Computer Science, University of Innsbruck\
+Technikerstr. 21a, A-6020 Innsbruck, Austria\
+Phone +43 512 507-6465, Fax +43 512 507-6105\
+}
