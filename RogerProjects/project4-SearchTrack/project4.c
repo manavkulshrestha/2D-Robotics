@@ -26,19 +26,21 @@
 #define CONVG_ACT 0
 // end RLToolKit parameters
 
-// double proj_four_q_table[NSTATES][NACTIONS] = {0.0};
-double proj_four_q_table[NSTATES][NACTIONS] = {
-	{0,0},
-	{0,0},
-	{0,0},
-	{0,0},
-	{0,0},
-	{0,0},
-	{0,0},
-	{0,0},
-	{0,0},
-};
+double proj_four_q_table[NSTATES][NACTIONS] = {0.0};
+
 /**************************************************************/
+
+#define BASEROT_ERROR_OFFSET 1
+#define EYE_ERROR_OFFSET 2
+
+double farrsum(double *arr, int n) {
+	double sum = 0;
+
+	for (int i=0; i<n; i++)
+		sum += arr[i];
+
+	return sum;
+}
 
 /* 
 * Primitive Skill prototype function.
@@ -49,20 +51,24 @@ double errors[NDOF];
 double time;
 {
 	static int return_status = NO_REFERENCE;
-	static double heading = NULL;
+	static double heading = NAN;
 
-	// // first, do no harm
+	// first, do no harm
 	for (int i=0; i<NDOF; ++i) {
 		errors[i] = 0.0;
 	}
 
-	for (int i=0; i<NEYES; i++) {
-		errors[EYE_ERROR_OFFSET+i] = heading-roger->eye_theta[i];
-
-		if (heading == NULL || abs(errors[EYE_ERROR_OFFSET+i]) < 0.01) {
-
-		}
+	if (return_status == CONVERGED || isnan(heading)) {
+		while (!sample_gaze_direction(&heading)) {};
+		return_status = TRANSIENT;
 	}
+
+	for (int i=0; i<NEYES; i++)
+		errors[EYE_ERROR_OFFSET+i] = -roger->eye_theta[i];
+	errors[BASEROT_ERROR_OFFSET] = heading-roger->base_position[THETA];
+
+	if (fabs(errors[BASEROT_ERROR_OFFSET]) < 0.05)
+		return_status = CONVERGED;
 
 	return return_status;
 }
@@ -75,16 +81,29 @@ Robot* roger;
 double errors[NDOF];
 double time;
 {
-	static int return_status = NO_REFERENCE;
-	// first, do no harm
+  static int return_status = NO_REFERENCE;
 
-	for (int i=0; i<NDOF; ++i) {
-		errors[i] = 0.0;
-	}
+  // first, do no harm
+  for (int i=0; i<NDOF; ++i) {
+    errors[i] = 0.0;
+  }
 
-	// DO STUFF
+  int u[NEYES];
 
-	return(return_status);
+  if (!average_red_pixel(roger, u))
+    return (return_status = NO_REFERENCE);
+
+  for (int i=0; i<NEYES; i++)
+    errors[EYE_ERROR_OFFSET+i] = -atan2(NPIXELS/2 - u[i], FOCAL_LENGTH);
+  // errors[BASEROT_ERROR_OFFSET] = (errors[EYE_ERROR_OFFSET]+errors[EYE_ERROR_OFFSET+1])/2
+  // roger->base_setpoint[THETA] = (roger->eye_theta[LEFT]+roger->eye_theta[RIGHT])/2;
+  // errors[BASEROT_ERROR_OFFSET] = 1;
+	errors[BASEROT_ERROR_OFFSET] = farrsum(roger->eye_theta, NEYES)/2;
+
+  if (fabs(errors[EYE_ERROR_OFFSET])+fabs(errors[EYE_ERROR_OFFSET]) < 0.05)
+  	return (return_status = CONVERGED);
+
+  return TRANSIENT;
 }
 
 
@@ -94,103 +113,93 @@ double time;
 // *     use your learned or hand-designed policy array in this function
 // *     for future functions to call.
 // */
-// int CompositeAction_X(roger, errors, time)
-// Robot* roger;
-// double errors[NDOF];
-// double time;
-// {
-// 	int i, state, return_state, internal_state[NACTIONS]; 
-// 	// double search_errors[NDOF], track_errors[NDOF];
-// 	double action_errors[NACTIONS][NDOF];
-// 	static int initialized = 0;
-// 	int selected_action;
+int search_track(roger, errors, time)
+Robot* roger;
+double errors[NDOF];
+double time;
+{
+	int internal_state[NACTIONS]; 
+	double search_errors[NDOF], track_errors[NDOF];
+	double action_errors[NACTIONS][NDOF];
+	static int initialized = FALSE;
 
-// 	// arrays to hold the action and reward functions (rewards are still tracked for debugging)
-// 	static int (*actions[NACTIONS])(Robot* roger, double errors[NDOF], double time);
+	// arrays to hold the action and reward functions (rewards are still tracked for debugging)
+	static int (*actions[NACTIONS])(Robot* roger, double errors[NDOF], double time);
 
-// 	if (initialized == 0) {
-// 		// need to assign actions to the array indicies 
-// 		//    NOTE: order matters w.r.t. how state is calculated
-// 		actions[0] = Action_X;
-// 		actions[1] = ...;
-//   		...
-//   		// Load the learned q-table - if skill was learned through RL....
-// 		LoadLearnedQTable(..., proj_X_q_table, NSTATES, NACTIONS, Q_TABLE_FILE);
-     
-//   		// ... OR - define the q-table by hand
-//      	proj_X_q_table[0][0] = 1.0;
-// 		proj_X_q_table[1][1] = 1.0;
-// 		proj_X_q_table[2][0] = 1.0;
-//      	...
-//      	total_reward_exploit = 0.0;
-// 		initialized = 1;
-// 	}
+	if (!initialized) {
+		actions[0] = search;
+		actions[1] = track;
+    
+    // proj_four_q_table[0][0] = 1;
+    // proj_four_q_table[1][1] = 1;
+    // proj_four_q_table[2][1] = 1;
+    // proj_four_q_table[3][0] = 1;
+    // proj_four_q_table[4][1] = 1;
+    // proj_four_q_table[5][1] = 1;
+    // proj_four_q_table[6][1] = 1;
+    // proj_four_q_table[7][1] = 1;
+    // proj_four_q_table[8][1] = 1;
+
+    proj_four_q_table[0][0] = 1.0;
+    proj_four_q_table[1][0] = 1.0;
+    proj_four_q_table[2][0] = 1.0;
+
+    proj_four_q_table[3][1] = 1.0;
+    proj_four_q_table[4][1] = 1.0;
+    proj_four_q_table[5][1] = 1.0;
+
+    proj_four_q_table[6][1] = 1.0;
+    proj_four_q_table[7][1] = 1.0;
+    proj_four_q_table[8][1] = 1.0;
+
+		initialized = TRUE;
+	}
 	
-// 	// first do no harm
-// 	for (i=0; i<NDOF; ++i) {
-// 		errors[i] = 0.0;
-// 	}
+	// first do no harm
+	for (int i=0; i<NDOF; ++i) {
+		errors[i] = 0.0;
+	}
 
-// 	// calculate the current state based on the avaliable actions
-// 	state = 0;
-//     // create a defualt set of action parameters
-// 	for (i=0; i<NACTIONS; ++i) {
-// 		internal_state[i] = actions[i](roger, action_errors[i], time);
-// 		state += pow(3, i)*internal_state[i];
-// 	}
+	// calculate the current state based on the avaliable actions
+	int state = 0;
 
-// 	// get the greedy (largest q-value) action to perform based on the q-table
-// 	selected_action = GetActionGreedy(state, proj_..._q_table, NACTIONS);
+  // create a defualt set of action parameters
+	for (int i=0; i<NACTIONS; ++i) {
+		internal_state[i] = actions[i](roger, action_errors[i], time);
+		state += pow(3, i)*internal_state[i];
+	}
 
-// 	copy_errors(action_errors[selected_action], errors);
+	// get the greedy (largest q-value) action to perform based on the q-table
+	int selected_action = GetActionGreedy(state, proj_four_q_table, NACTIONS);
+	copy_errors(action_errors[selected_action], errors);
 
-// 	// handle setting the return state
-//     // TODO: define your own skill's return status based on the state
-// 	if (state >= 1 && ...) {
-// 		return(TRANSIENT); 
-// 	} else if (...) {
-// 		return(CONVERGED);
-// 	}
-// 	... 
-// 	return(NO_REFERENCE);
-// }
+	// printf("%d\n", state);
+
+	// handle setting the return state
+	if (state == 8)
+		return CONVERGED;
+
+	return state ? TRANSIENT : NO_REFERENCE;
+}
 /********************************************************************************************************/
-
-
-// /* 
-// * Primitive Skill prototype function.
-// */
-// int Action_X(roger, errors, time)
-// Robot* roger;
-// double errors[NDOF];
-// double time;
-// {
-// 	int i;
-// 	static int return_status = NO_REFERENCE;
-// 	// first, do no harm
-//   	for (i=0; i<NDOF; ++i) {
-//   		errors[i] = 0.0;
-//   	}
-// 	// DO STUFF
-// 	return(return_status);
-// }
 
 void project4_control(roger, time)
 Robot* roger;
 double time;
 { 
 	/******** Code outline for testing primitive actions ********/
-	// double errors[NDOF];
+	double errors[NDOF];
 
-	// Action_X(roger, errors, time);
-	// submit_errors(roger, errors);
+  printf("base theta: %f\n", roger->base_position[THETA]);
+	search_track(roger, errors, time);
+	submit_errors(roger, errors);
 	/************************************************************/
 
 
 	/******** Code outline for testing HAND-DESIGNED composite actions ********/
 	// double errors[NDOF];
 
-	// CompositeAction_X(roger, errors, time);
+	// search_track(roger, errors, time);
 	// submit_errors(roger, errors);
 	/************************************************************/
 

@@ -29,29 +29,35 @@
 double proj_three_q_table[NSTATES][NACTIONS] = {0.0};
 /**************************************************************/
 
+#define EYE_ERROR_OFFSET 2
+
 int pixel_is_red(int *pixel) {
   return pixel[0] == 255 && !pixel[1] && !pixel[2];
 }
 
 int average_red_pixel(Robot *roger, int *u)
 {
-  int foundRed = FALSE;
+  int foundRed = TRUE;
+  int u_temp[NEYES];
 
   for (int i=0; i<NEYES; i++) {
-    int j = 0;
+    int startIdx = 0;
 
-    while (j < NPIXELS && !pixel_is_red(roger->image[i][j]))
-      j++;
+    while (startIdx < NPIXELS && !pixel_is_red(roger->image[i][startIdx]))
+      startIdx++;
 
-    int startIdx = j, endIdx = j;
+    int endIdx = NPIXELS-1;
 
-    while(j < NPIXELS && pixel_is_red(roger->image[i][j])) {
-      endIdx = j++;
-      foundRed = TRUE;
-    }
+    while(endIdx > startIdx && !pixel_is_red(roger->image[i][endIdx]))
+      endIdx--;
 
-    u[i] = (int) (startIdx+endIdx)/2;
+    u_temp[i] = (int) (startIdx+endIdx)/2;
+    foundRed = foundRed && (startIdx < NPIXELS);
   }
+
+  if (foundRed)
+    for (int i=0; i<NEYES; i++)
+      u[i] = u_temp[i];
 
   return foundRed;
 }
@@ -77,7 +83,7 @@ double time;
     return return_status;
 
   for (int i=0; i<NEYES; i++)
-    errors[2+i] = -atan2(NPIXELS/2 - u[i], FOCAL_LENGTH);
+    errors[EYE_ERROR_OFFSET+i] = -atan2(NPIXELS/2 - u[i], FOCAL_LENGTH);
 
   return TRANSIENT;
 }
@@ -92,23 +98,6 @@ double time;
 	track3(roger, errors, time);
 	submit_errors(roger, errors);
 }
-
-// void project3_control(roger, time)
-// Robot* roger;
-// double time;
-// { 
-//   int u[NEYES];
-
-//   if (!average_red_pixel(roger, u))
-//     return;
-
-//   double theta_error[NEYES];
-//   for (int i=0; i<NEYES; i++)
-//     theta_error[i] = atan2(NPIXELS/2 - u[i], FOCAL_LENGTH);
-
-//   for (int i=0; i<NEYES; i++)
-//     roger->eyes_setpoint[i] = roger->eye_theta[i] - theta_error[i];
-// }
 
 /************************************************************************/
 void project3_reset(roger)
