@@ -455,3 +455,10 @@ void matrix_eigen_vecs_2x2(double m[2][2], double eigen_value, double eigen_vect
 	eigen_vector[1] = v2/mag;
 
 }
+
+/*MANAV'S MATRIX METHODS*/
+void matrix_scale(int m, int n, double in[m][n], double scale, double out[m][n]) {
+  for (int i=0; i<m; i++)
+    for (int j=0; j<m; j++)
+      out[i][j] = scale*in[i][j];
+}

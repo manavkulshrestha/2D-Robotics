@@ -18,7 +18,7 @@
 /* skills as sequential decision to engage primative actions           */
 /*    all actions/skills return status values in {NOREF, !CONV, COV}   */
 /*    where NOREF = 0, !CONV=1, CONV=2                                 */
-#define NACTIONS 1
+#define NACTIONS 2
 #define NSTATES  3    // 3^(NACTIONS)
 
 // only used if using the RL toolkit
@@ -29,11 +29,75 @@
 double proj_five_q_table[NSTATES][NACTIONS] = {0.0};
 /**************************************************************/
 
+#define DRAW_BUFFER_SIZE 1
+#define DRAW_SKIP_SIZE -1
+Observation obuf[DRAW_BUFFER_SIZE];
 
 void project5_control(roger, time)
 Robot* roger;
 double time;
-{ }
+{
+	int u[NEYES];
+	double wTb[4][4], bTw[4][4], ref_b[4], ref_w[4], Jw[2][2], wRb[2][2], JwT[2][2];
+	double errors[NDOF];
+	static int obs_counter = 0;
+	static int skip_counter = 0;
+	Observation obs;
+
+	search_track(roger, errors, time);
+	submit_errors(roger, errors);
+
+	if (!average_red_pixel(roger, u))
+		return;
+
+	double gL = roger->eye_theta[LEFT]-atan2(NPIXELS/2 - u[LEFT], FOCAL_LENGTH);
+	double gR = roger->eye_theta[RIGHT]-atan2(NPIXELS/2 - u[RIGHT], FOCAL_LENGTH);
+	double lL = 2*BASELINE*cos(gR)/sin(gR-gL);
+
+	ref_b[X] = lL*cos(gL);
+	ref_b[Y] = BASELINE + lL*sin(gL);
+	ref_b[2] = 0;
+	ref_b[3] = 1;
+
+	double jc = 2*BASELINE/SQR(sin(gR-gL));
+	double Jb[2][2] = {
+		{jc*SQR(cos(gR)), -jc*SQR(cos(gL))},
+		{jc*sin(gR)*cos(gR), -jc*sin(gL)*cos(gL)}
+	};
+
+	construct_wTb(roger->base_position, wTb);
+  matrix_mult(4, 4, wTb, 1, ref_b, ref_w);
+
+  for (int i=X; i<=Y; i++)
+  	for (int j=X; j<=Y; j++)
+  		wRb[i][j] = wTb[i][j];
+
+  matrix_mult(2, 2, wRb, 2, Jb, Jw);
+
+  obs.pos[X] = ref_w[X];
+  obs.pos[Y] = ref_w[Y];
+
+  matrix_transpose(2, 2, Jw, JwT);
+  matrix_mult(2, 2, Jw, 2, JwT, obs.cov);
+
+  obs.time = time;
+
+  matrix_scale(2, 2, obs.cov, 0.01, obs.cov);
+
+  if (skip_counter > DRAW_SKIP_SIZE) {
+  	obuf[obs_counter] = obs;
+  	obs_counter = (obs_counter+1)%DRAW_BUFFER_SIZE;
+  	skip_counter = 0;
+  } else
+  	skip_counter++;
+
+	// printf("lL: %f\n", lL);
+	// printf("x y: %f %f\n", ref_b[X], ref_b[Y]);
+	// printf("jc: %f\n", jc);
+	// printf("Jacobian:\n");
+	// printf("[%f %f]\n", Jb[0][0], Jb[0][1]);
+	// printf("[%f %f]\n\n", Jb[1][0], Jb[1][1]);
+}
 
 /************************************************************************/
 void project5_reset(roger)
@@ -50,5 +114,6 @@ void project5_enter_params()
 void project5_visualize(roger)
 Robot* roger;
 {
-	// draw_observation(roger, obs); /* defined in update.c */
+	for (int i=0; i<DRAW_BUFFER_SIZE; i++)
+		draw_observation(roger, obuf[i]);
 }

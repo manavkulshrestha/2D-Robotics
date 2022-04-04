@@ -46,9 +46,9 @@ int limb;
 double x, y;
 { }
 
-double sqr(double x) {
-  return x*x;
-}
+// double sqr(double x) {
+//   return x*x;
+// }
 
 // submit calculated angles directly to robot-?setpoints structure
 int inv_arm_kinematics(roger, limb, x, y)
@@ -75,13 +75,13 @@ double x, y;
   if (limb==LEFT) ref_b[Y] -= ARM_OFFSET;
   else ref_b[Y] += ARM_OFFSET;
 
-  r2 = sqr(ref_b[X]) + sqr(ref_b[Y]);
-  c2 = (r2-sqr(L_ARM1)-sqr(L_ARM2))/(2*L_ARM1*L_ARM2);
+  r2 = SQR(ref_b[X]) + SQR(ref_b[Y]);
+  c2 = (r2-SQR(L_ARM1)-SQR(L_ARM2))/(2*L_ARM1*L_ARM2);
 
   if (c2 < -1 || c2 > 1)
     return FALSE;
 
-  s2_plus = sqrt(1-sqr(c2));
+  s2_plus = sqrt(1-SQR(c2));
   theta2_plus = atan2(s2_plus, c2);
   k1 = L_ARM1+L_ARM2*c2;
   k2_plus = L_ARM2*s2_plus;

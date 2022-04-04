@@ -55,20 +55,25 @@ double time;
 
 	// first, do no harm
 	for (int i=0; i<NDOF; ++i) {
-		errors[i] = 0.0;
+		errors[i] = 0;
 	}
 
 	if (return_status == CONVERGED || isnan(heading)) {
 		while (!sample_gaze_direction(&heading)) {};
 		return_status = TRANSIENT;
+		printf("NEW SAMPLE HEADING %f\n", heading);
 	}
 
 	for (int i=0; i<NEYES; i++)
 		errors[EYE_ERROR_OFFSET+i] = -roger->eye_theta[i];
 	errors[BASEROT_ERROR_OFFSET] = heading-roger->base_position[THETA];
 
-	if (fabs(errors[BASEROT_ERROR_OFFSET]) < 0.05)
+	// printf("base error: %f\n", fmod(errors[BASEROT_ERROR_OFFSET], 2*M_PI));
+
+	if (fabs(errors[BASEROT_ERROR_OFFSET]) < 0.05) {
 		return_status = CONVERGED;
+		printf("status CONVERGED at %f\n", fmod(errors[BASEROT_ERROR_OFFSET], 2*M_PI));
+	}
 
 	return return_status;
 }
@@ -90,19 +95,18 @@ double time;
 
   int u[NEYES];
 
-  if (!average_red_pixel(roger, u))
+  if (!average_red_pixel(roger, uabout))
     return (return_status = NO_REFERENCE);
 
-  for (int i=0; i<NEYES; i++)
+  errors[BASEROT_ERROR_OFFSET] = farrsum(roger->eye_theta, NEYES)/2;
+  for (int i=0; i<NEYES; i++) {
     errors[EYE_ERROR_OFFSET+i] = -atan2(NPIXELS/2 - u[i], FOCAL_LENGTH);
-  // errors[BASEROT_ERROR_OFFSET] = (errors[EYE_ERROR_OFFSET]+errors[EYE_ERROR_OFFSET+1])/2
-  // roger->base_setpoint[THETA] = (roger->eye_theta[LEFT]+roger->eye_theta[RIGHT])/2;
-  // errors[BASEROT_ERROR_OFFSET] = 1;
-	errors[BASEROT_ERROR_OFFSET] = farrsum(roger->eye_theta, NEYES)/2;
+  	errors[BASEROT_ERROR_OFFSET] += errors[EYE_ERROR_OFFSET+i];
+  }
 
   if (fabs(errors[EYE_ERROR_OFFSET])+fabs(errors[EYE_ERROR_OFFSET]) < 0.05)
   	return (return_status = CONVERGED);
-
+  
   return TRANSIENT;
 }
 
@@ -129,28 +133,16 @@ double time;
 	if (!initialized) {
 		actions[0] = search;
 		actions[1] = track;
-    
-    // proj_four_q_table[0][0] = 1;
-    // proj_four_q_table[1][1] = 1;
-    // proj_four_q_table[2][1] = 1;
-    // proj_four_q_table[3][0] = 1;
-    // proj_four_q_table[4][1] = 1;
-    // proj_four_q_table[5][1] = 1;
-    // proj_four_q_table[6][1] = 1;
-    // proj_four_q_table[7][1] = 1;
-    // proj_four_q_table[8][1] = 1;
 
-    proj_four_q_table[0][0] = 1.0;
-    proj_four_q_table[1][0] = 1.0;
-    proj_four_q_table[2][0] = 1.0;
-
-    proj_four_q_table[3][1] = 1.0;
-    proj_four_q_table[4][1] = 1.0;
-    proj_four_q_table[5][1] = 1.0;
-
-    proj_four_q_table[6][1] = 1.0;
-    proj_four_q_table[7][1] = 1.0;
-    proj_four_q_table[8][1] = 1.0;
+    proj_four_q_table[0][0] = 1;
+    proj_four_q_table[1][0] = 1;
+    proj_four_q_table[2][1] = 1;
+    proj_four_q_table[3][1] = 1;
+    proj_four_q_table[4][1] = 1;
+    proj_four_q_table[5][1] = 1;
+    proj_four_q_table[6][1] = 1;
+    proj_four_q_table[7][1] = 1;
+    proj_four_q_table[8][1] = 1;
 
 		initialized = TRUE;
 	}
@@ -168,8 +160,7 @@ double time;
 		internal_state[i] = actions[i](roger, action_errors[i], time);
 		state += pow(3, i)*internal_state[i];
 	}
-
-	// get the greedy (largest q-value) action to perform based on the q-table
+	
 	int selected_action = GetActionGreedy(state, proj_four_q_table, NACTIONS);
 	copy_errors(action_errors[selected_action], errors);
 
@@ -189,10 +180,17 @@ double time;
 { 
 	/******** Code outline for testing primitive actions ********/
 	double errors[NDOF];
+	static FILE *fptr = NULL;
 
-  printf("base theta: %f\n", roger->base_position[THETA]);
 	search_track(roger, errors, time);
+
+	fptr = fopen("p4.txt", "a");
+	fprintf(fptr, "%f\n", errors[BASEROT_ERROR_OFFSET]);
+	printf("BASE ERROR: %f\n", errors[BASEROT_ERROR_OFFSET]);
+
 	submit_errors(roger, errors);
+
+	fclose(fptr);
 	/************************************************************/
 
 
