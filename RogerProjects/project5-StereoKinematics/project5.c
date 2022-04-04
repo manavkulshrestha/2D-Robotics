@@ -33,19 +33,9 @@ double proj_five_q_table[NSTATES][NACTIONS] = {0.0};
 #define DRAW_SKIP_SIZE -1
 Observation obuf[DRAW_BUFFER_SIZE];
 
-void project5_control(roger, time)
-Robot* roger;
-double time;
-{
+int stereo_observation(Robot *roger, double time, Observation *obs) {
 	int u[NEYES];
 	double wTb[4][4], bTw[4][4], ref_b[4], ref_w[4], Jw[2][2], wRb[2][2], JwT[2][2];
-	double errors[NDOF];
-	static int obs_counter = 0;
-	static int skip_counter = 0;
-	Observation obs;
-
-	search_track(roger, errors, time);
-	submit_errors(roger, errors);
 
 	if (!average_red_pixel(roger, u))
 		return;
@@ -74,14 +64,28 @@ double time;
 
   matrix_mult(2, 2, wRb, 2, Jb, Jw);
 
-  obs.pos[X] = ref_w[X];
-  obs.pos[Y] = ref_w[Y];
+  obs->pos[X] = ref_w[X];
+  obs->pos[Y] = ref_w[Y];
 
   matrix_transpose(2, 2, Jw, JwT);
-  matrix_mult(2, 2, Jw, 2, JwT, obs.cov);
+  matrix_mult(2, 2, Jw, 2, JwT, obs->cov);
 
-  obs.time = time;
+  obs->time = time;
+}
 
+void project5_control(roger, time)
+Robot* roger;
+double time;
+{
+	double errors[NDOF];
+	static int obs_counter = 0;
+	static int skip_counter = 0;
+	Observation obs;
+
+	search_track(roger, errors, time);
+	submit_errors(roger, errors);
+
+	stereo_observation(roger, time, &obs);
   matrix_scale(2, 2, obs.cov, 0.01, obs.cov);
 
   if (skip_counter > DRAW_SKIP_SIZE) {
@@ -90,13 +94,6 @@ double time;
   	skip_counter = 0;
   } else
   	skip_counter++;
-
-	// printf("lL: %f\n", lL);
-	// printf("x y: %f %f\n", ref_b[X], ref_b[Y]);
-	// printf("jc: %f\n", jc);
-	// printf("Jacobian:\n");
-	// printf("[%f %f]\n", Jb[0][0], Jb[0][1]);
-	// printf("[%f %f]\n\n", Jb[1][0], Jb[1][1]);
 }
 
 /************************************************************************/

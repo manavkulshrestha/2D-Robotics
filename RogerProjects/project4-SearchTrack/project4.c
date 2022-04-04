@@ -95,7 +95,7 @@ double time;
 
   int u[NEYES];
 
-  if (!average_red_pixel(roger, uabout))
+  if (!average_red_pixel(roger, u))
     return (return_status = NO_REFERENCE);
 
   errors[BASEROT_ERROR_OFFSET] = farrsum(roger->eye_theta, NEYES)/2;
