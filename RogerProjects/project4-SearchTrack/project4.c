@@ -32,6 +32,7 @@ double proj_four_q_table[NSTATES][NACTIONS] = {0.0};
 
 #define BASEROT_ERROR_OFFSET 1
 #define EYE_ERROR_OFFSET 2
+#define EPSS 0.1
 
 double farrsum(double *arr, int n) {
 	double sum = 0;
@@ -61,18 +62,16 @@ double time;
 	if (return_status == CONVERGED || isnan(heading)) {
 		while (!sample_gaze_direction(&heading)) {};
 		return_status = TRANSIENT;
-		printf("NEW SAMPLE HEADING %f\n", heading);
+		// printf("NEW SAMPLE HEADING %f\n", heading);
 	}
 
 	for (int i=0; i<NEYES; i++)
 		errors[EYE_ERROR_OFFSET+i] = -roger->eye_theta[i];
 	errors[BASEROT_ERROR_OFFSET] = heading-roger->base_position[THETA];
 
-	// printf("base error: %f\n", fmod(errors[BASEROT_ERROR_OFFSET], 2*M_PI));
 
-	if (fabs(errors[BASEROT_ERROR_OFFSET]) < 0.05) {
+	if (fabs(errors[BASEROT_ERROR_OFFSET]) < EPSS) {
 		return_status = CONVERGED;
-		printf("status CONVERGED at %f\n", fmod(errors[BASEROT_ERROR_OFFSET], 2*M_PI));
 	}
 
 	return return_status;
@@ -98,16 +97,17 @@ double time;
   if (!average_red_pixel(roger, u))
     return (return_status = NO_REFERENCE);
 
+  return_status = TRANSIENT;
   errors[BASEROT_ERROR_OFFSET] = farrsum(roger->eye_theta, NEYES)/2;
   for (int i=0; i<NEYES; i++) {
     errors[EYE_ERROR_OFFSET+i] = -atan2(NPIXELS/2 - u[i], FOCAL_LENGTH);
   	errors[BASEROT_ERROR_OFFSET] += errors[EYE_ERROR_OFFSET+i];
   }
 
-  if (fabs(errors[EYE_ERROR_OFFSET])+fabs(errors[EYE_ERROR_OFFSET]) < 0.05)
+  if (fabs(errors[EYE_ERROR_OFFSET])+fabs(errors[EYE_ERROR_OFFSET]) < EPSS)
   	return (return_status = CONVERGED);
   
-  return TRANSIENT;
+  return return_status;
 }
 
 
@@ -167,7 +167,7 @@ double time;
 	// printf("%d\n", state);
 
 	// handle setting the return state
-	if (state == 8)
+	if (state >= 6)
 		return CONVERGED;
 
 	return state ? TRANSIENT : NO_REFERENCE;
@@ -186,7 +186,7 @@ double time;
 
 	fptr = fopen("p4.txt", "a");
 	fprintf(fptr, "%f\n", errors[BASEROT_ERROR_OFFSET]);
-	printf("BASE ERROR: %f\n", errors[BASEROT_ERROR_OFFSET]);
+	// printf("BASE ERROR: %f\n", errors[BASEROT_ERROR_OFFSET]);
 
 	submit_errors(roger, errors);
 

@@ -35,6 +35,8 @@
 double proj_two_q_table[NSTATES][NACTIONS] = {0.0};
 /**************************************************************/
 
+#define LEFTSHO_ERROR_OFFSET 4
+#define RIGHTSH_ERROR_OFFSET 6
 
 /*************************************************************************/
 /*** PROJECT #2 - FORWARD KINEMATICS: MAP (THETA1, THETA2) TO (X,Y)_B  ***/
@@ -127,12 +129,6 @@ double errors[NDOF];
   double r2, c2, s2_plus, s2_minus, theta2_plus, theta2_minus;
   double k1, k2_plus, k2_minus, alpha_plus, alpha_minus;
   double theta1_plus, theta1_minus;
-  int i;
-
-  // first, do no harm
-  	for (i=0; i<NDOF; ++i) {
-  		errors[i] = 0.0;
-  	}
 
   // input (x,y) is in world frame coordinates - map it into the base frame
   construct_wTb(roger->base_position, wTb);
@@ -147,8 +143,42 @@ double errors[NDOF];
   if (limb==LEFT) ref_b[Y] -= ARM_OFFSET;
   else ref_b[Y] += ARM_OFFSET;
 
-  // printf("x = %6.4lf  y = %6.4lf OUT OF REACH\n", ref_b[X], ref_b[Y]);
-  return FALSE;
+  r2 = SQR(ref_b[X]) + SQR(ref_b[Y]);
+  c2 = (r2-SQR(L_ARM1)-SQR(L_ARM2))/(2*L_ARM1*L_ARM2);
+
+  if (c2 < -1 || c2 > 1)
+    return FALSE;
+
+  s2_plus = sqrt(1-SQR(c2));
+  theta2_plus = atan2(s2_plus, c2);
+  k1 = L_ARM1+L_ARM2*c2;
+  k2_plus = L_ARM2*s2_plus;
+  alpha_plus = atan2(k2_plus, k1);
+  theta1_plus = atan2(ref_b[Y], ref_b[X])-alpha_plus;
+
+  s2_minus = -s2_plus;
+  theta2_minus = atan2(s2_minus, c2);
+  k2_minus = L_ARM2*s2_minus;
+  alpha_minus = atan2(k2_minus, k1);
+  theta1_minus = atan2(ref_b[Y], ref_b[X])-alpha_minus;
+
+  double theta1_pos = roger->arm_theta[limb][0];
+  double theta2_pos = roger->arm_theta[limb][1];
+
+  double plus_dist = (theta1_plus-theta1_pos)+(theta2_plus-theta2_pos);
+  double minus_dist = (theta1_minus-theta1_pos)+(theta2_minus-theta2_pos);
+
+  int err_oft = (RIGHTSH_ERROR_OFFSET-LEFTSHO_ERROR_OFFSET)*limb+LEFTSHO_ERROR_OFFSET;
+
+  if (plus_dist < minus_dist) {
+    errors[err_oft] = theta1_plus;
+    errors[err_oft+1] = theta2_plus;
+  } else {
+    errors[err_oft] = theta1_minus;
+    errors[err_oft+1] = theta2_minus;
+  }
+
+  return TRUE;
 }
 
 void add_error_arrays(arr_1, arr_2, out)

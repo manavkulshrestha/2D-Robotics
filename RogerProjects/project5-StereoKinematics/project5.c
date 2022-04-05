@@ -38,7 +38,7 @@ int stereo_observation(Robot *roger, double time, Observation *obs) {
 	double wTb[4][4], bTw[4][4], ref_b[4], ref_w[4], Jw[2][2], wRb[2][2], JwT[2][2];
 
 	if (!average_red_pixel(roger, u))
-		return;
+		return FALSE;
 
 	double gL = roger->eye_theta[LEFT]-atan2(NPIXELS/2 - u[LEFT], FOCAL_LENGTH);
 	double gR = roger->eye_theta[RIGHT]-atan2(NPIXELS/2 - u[RIGHT], FOCAL_LENGTH);
@@ -71,6 +71,8 @@ int stereo_observation(Robot *roger, double time, Observation *obs) {
   matrix_mult(2, 2, Jw, 2, JwT, obs->cov);
 
   obs->time = time;
+
+  return TRUE;
 }
 
 void project5_control(roger, time)
