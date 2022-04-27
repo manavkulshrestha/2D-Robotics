@@ -33,7 +33,11 @@ double proj_seven_q_table2[NSTATES][NACTIONS] = {0.0};
 #define BASETRA_ERROR_OFFSET 0
 #define BASEROT_ERROR_OFFSET 1
 
-#define DIST(X,Y) sqrt(SQR(X)+SQR(Y))
+#define LEFTSHO_ERROR_OFFSET 4
+#define RIGHTSH_ERROR_OFFSET 6
+
+#define DIST(X,Y) sqrt(SQR(X)+SQR(Y));
+#define DIST2(X1, Y1, X2, Y2) DIST(X1-X2, Y1-Y2);
 
 int subarreq(double *arr1, double *arr2, int start, int end, double tol) {
 	for (int i=start; i<=end; i++)
@@ -68,65 +72,12 @@ double time;
 
 	return_status = TRANSIENT;
 	errors[0] = DIST(aerrors[X], aerrors[Y]);
-	errors[1] = atan2(aerrors[Y], aerrors[X]);
+	// errors[1] = atan2(aerrors[Y], aerrors[X]);
 
 	if (subarreq(roger->base_position, obs.pos, X, Y, 0.01))
 		return_status = CONVERGED;
 
 	return return_status;
-}
-
-int chase(roger, errors, time)
-Robot* roger;
-double errors[NDOF];
-double time;
-{
-	int state, return_state, internal_state[NACTIONS]; 
-	// double search_errors[NDOF], track_errors[NDOF];
-	double action_errors[NACTIONS][NDOF];
-	static int initialized = 0;
-	int selected_action;
-
-	// arrays to hold the action and reward functions (rewards are still tracked for debugging)
-	static int (*actions[NACTIONS])(Robot* roger, double errors[NDOF], double time);
-
-	if (initialized == 0) {
-		actions[0] = search_track2;
-		actions[1] = approach;
-     
-    proj_seven_q_table[0][0] = 1;
-    proj_seven_q_table[1][0] = 1;
-    proj_seven_q_table[2][0] = 1;
-    proj_seven_q_table[3][0] = 1;
-    proj_seven_q_table[4][0] = 1;
-    proj_seven_q_table[5][1] = 1;
-    proj_seven_q_table[6][1] = 1;
-    proj_seven_q_table[7][1] = 1;
-    proj_seven_q_table[8][1] = 1;
-		initialized = 1;
-	}
-	
-	// first do no harm
-	for (int i=0; i<NDOF; ++i) {
-		errors[i] = 0.0;
-	}
-
-	// calculate the current state based on the avaliable actions
-	state = 0;
-	for (int i=0; i<NACTIONS; ++i) {
-		internal_state[i] = actions[i](roger, action_errors[i], time);
-		state += pow(3, i)*internal_state[i];
-	}
-
-	// get the greedy (largest q-value) action to perform based on the q-table
-	selected_action = GetActionGreedy(state, proj_seven_q_table, NACTIONS);
-	copy_errors(action_errors[selected_action], errors);
-
-	// handle setting the return state
-	if (state == 8)
-		return CONVERGED;
-
-	return state ? TRANSIENT : NO_REFERENCE;
 }
 
 int touch(roger, errors, time)
@@ -142,17 +93,20 @@ double time;
 
 	Observation obs;
 	if (!stereo_observation(roger, time, &obs))
-		return;
+		return (return_status = NO_REFERENCE);
+ 
+	double aerrors[NARMS][NDOF] = {0};
 
-	int limb;
-	for (limb=0; limb<NARMS; limb++)
-		if (inv_arm_kinematics_errors(roger, limb, obs.pos[X], obs.pos[Y], errors))
-			break;
+	for (int limb=0; limb<NARMS; limb++)
+		if (inv_arm_kinematics_errors(roger, limb, obs.pos[X], obs.pos[Y], aerrors[limb]))
+			return_status = TRANSIENT;
 
-	return_status = (limb == NARMS) ? NO_REFERENCE : TRANSIENT;
+	add_error_arrays(aerrors[0], aerrors[1], errors);
 
-	if (roger->ext_force[limb][0] > 0 || roger->ext_force[limb][1] > 0)
-		return_status = CONVERGED;
+	for (int limb=0; limb<NARMS; limb++)
+		for (int fi=X; fi<=Y; fi++)
+			if (roger->ext_force[limb][fi] > 0)
+				return (return_status = CONVERGED);
 
 	return return_status;
 }
@@ -162,60 +116,20 @@ Robot* roger;
 double errors[NDOF];
 double time;
 {
-	int state, return_state, internal_state[NACTIONS];
-	// double search_errors[NDOF], track_errors[NDOF];
-	double action_errors[NACTIONS][NDOF];
-	static int initialized = 0;
-	int selected_action;
 
-	// arrays to hold the action and reward functions (rewards are still tracked for debugging)
-	static int (*actions[NACTIONS])(Robot* roger, double errors[NDOF], double time);
+	for (int i=0; i<NDOF; i++)
+		errors[i] = 0;
 
-	if (initialized == 0) {
-		// need to assign actions to the array indicies 
-		//    NOTE: order matters w.r.t. how state is calculated
-		actions[0] = chase;
-		actions[1] = touch;
+	double chase_errors[NDOF], touch_errors[NDOF], st_errors[NDOF];
 
-		// ... OR - define the q-table by hand
-   	proj_seven_q_table2[0][0] = 1;
-		proj_seven_q_table2[1][0] = 1;
-		proj_seven_q_table2[2][0] = 1;
-		proj_seven_q_table2[3][0] = 1;
-		proj_seven_q_table2[4][1] = 1;
-		proj_seven_q_table2[5][1] = 1;
-		proj_seven_q_table2[6][1] = 1;
-		proj_seven_q_table2[7][1] = 1;
-		proj_seven_q_table2[8][1] = 1;
-		initialized = 1;
-	}
-	
-	// first do no harm
-	for (int i=0; i<NDOF; ++i) {
-		errors[i] = 0.0;
-	}
+	double st_status = search_track(roger, st_errors, time);
+	double chase_status = approach(roger, chase_errors, time);
+	double touch_status = touch(roger, touch_errors, time);
 
-	// calculate the current state based on the avaliable actions
-	state = 0;
-    // create a defualt set of action parameters
-	for (int i=0; i<NACTIONS; ++i) {
-		internal_state[i] = actions[i](roger, action_errors[i], time);
-		state += pow(3, i)*internal_state[i];
-	}
+	add_error_arrays(st_errors, touch_errors, errors);
 
-	printf("internal state: [%d, %d]\n", internal_state[0], internal_state[1]);
-	printf("state: %d\n", state);
-
-
-	// get the greedy (largest q-value) action to perform based on the q-table
-	selected_action = GetActionGreedy(state, proj_seven_q_table2, NACTIONS);
-	copy_errors(action_errors[selected_action], errors);
-
-	// handle setting the return state
-  if (state == 8)
-		return CONVERGED;
-
-	return state ? TRANSIENT : NO_REFERENCE;
+	if (st_status == CONVERGED)
+		add_error_arrays(chase_errors, errors, errors);
 }
 
 /********************************************************************************************************/
@@ -238,6 +152,29 @@ double time;
 	chase_touch(roger, errors, time);
 	// printf("[%f,%f,%f,%f,%f,%f,%f,%f]\n", errors[0], errors[1], errors[2], errors[3], errors[4], errors[5], errors[6], errors[7]);
 	submit_errors(roger, errors);
+
+	// LOGGING FOR GRAPH
+	Observation obs;
+	double base_ball_dist = 0, hand_ball_dist[NARMS] = {0};
+	if (stereo_observation(roger, time, &obs)) {
+		base_ball_dist = DIST2(roger->base_position[X], roger->base_position[Y], obs.pos[X], obs.pos[Y]);
+
+		double arms_b[NARMS][4], arms_w[NARMS][4], wTb[4][4];
+		construct_wTb(roger->base_position, wTb);
+
+		for (int limb=0; limb<NARMS; limb++) {
+			fwd_arm_kinematics(roger, limb, &arms_b[limb][X], &arms_b[limb][Y]);
+  		matrix_mult(4, 4, wTb, 1, arms_b[limb], arms_w[limb]);
+  		hand_ball_dist[limb] = DIST2(arms_w[limb][X], arms_w[limb][Y], obs.pos[X], obs.pos[Y]);
+		}
+	}
+
+	FILE *fptr = fopen("p7.txt", "a");
+	fprintf(fptr, "%f %f %f %f\n", roger->base_position[THETA], base_ball_dist, hand_ball_dist[0], hand_ball_dist[1]);
+
+	fclose(fptr);
+	
+
 	/************************************************************/
 
 	/******** Code outline for LEARNING/TESTING composite actions ********/

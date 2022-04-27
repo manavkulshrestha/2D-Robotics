@@ -45,12 +45,20 @@ double proj_two_q_table[NSTATES][NACTIONS] = {0.0};
 void fwd_arm_kinematics(roger, limb, x, y)
 Robot * roger;
 int limb;
-double x, y;
-{ }
+double *x, *y;
+{
+  double t1 = roger->arm_theta[limb][0];
+  double t2 = roger->arm_theta[limb][1];
 
-// double sqr(double x) {
-//   return x*x;
-// }
+  // W frame?
+  // *x = -(L_ARM1*sin(theta1)+L_ARM2*sin(theta1+theta2));
+  // *y = L_ARM1*cos(theta1)+L_ARM2*cos(theta1+theta2);
+
+  double limb_mult = (limb == LEFT) ? -1 : 1;
+
+  *x = limb_mult*(ARM_OFFSET+L_ARM1*sin(t1)+L_ARM2*sin(t1-t2));
+  *y = L_ARM1*cos(t1)+L_ARM2*cos(t1-t2);
+}
 
 // submit calculated angles directly to robot-?setpoints structure
 int inv_arm_kinematics(roger, limb, x, y)
