@@ -35,6 +35,79 @@ int file_exists(const char *filename)
     return is_exist;
 }
 
+// # define NACTIONS 3
+// # define CONVG_ACT 0
+
+// int reset_ball_training(roger, time, state, internal_state,
+// 	previous_action, counter, episode_len)
+// Robot* roger;
+// double time;
+// int state;                              // combinatorial state of used actions
+// int internal_state[NACTIONS];           // state of action in RL problem
+// int counter;                            // current OVERALL timestep in training (ms)
+// int previous_action;                    // action called in previous time-step
+// int episode_len;                        // max episode length (ms)
+// {
+// 	double roger_x, roger_y;            // current x, y position of Rogers base
+// 	double new_x, new_y;                // new x, y location of the red-ball
+// 	double ball_distance = 0.0;         // distance between Roger and ball
+// 	static int reset_flag = 0;          // reset book-keeping variables per episode
+// 	static int converged_counter = 0;   // count how long CONVG_ACT is converged
+	
+// 	// printf("b1\n");
+
+// 	// can include more complex behavior here, depending on your task
+// 	if (reset_flag == TRUE) {
+// 		reset_flag = FALSE;
+// 		converged_counter = 0;
+// 	}
+
+// 	// printf("b2\n");
+
+
+// 	// get Roger's current locations
+// 	roger_x = roger->base_position[X];
+// 	roger_y = roger->base_position[Y];
+
+// 	// printf("b3\n");
+
+	
+// 	// check if the internal state of CONVG_ACT is converged OR
+// 	//     we have reached the max number of actions per episode
+// 	if ((internal_state[CONVG_ACT] == CONVERGED && previous_action ==
+// 		CONVG_ACT) || (counter % episode_len == 0 && counter != 0)) {
+		
+// 		converged_counter += 1;      // increment counter
+
+// 		// if converged long enough or we reach the max time per episode
+// 		if (converged_counter > 500 || (counter % episode_len == 0 && counter != 0)) {
+// 			random_location((R_BALL + 0.75), &new_x, &new_y); // get a random location in the enviornment
+// 			// you can play with the wall-offset value above
+			
+// 			// calculate distance from new ball center to Roger center
+// 			ball_distance = sqrt(SQR(new_x - roger_x)+SQR(new_y - roger_y));
+
+// 			// keep selecting new locations until we pick one that is not going to hit Roger
+// 			while (ball_distance < (R_BALL + 1.2)) {     // you can play with this value
+// 				random_location((R_BALL + 0.75), &new_x, &new_y);			
+// 				ball_distance = sqrt(SQR(new_x - roger_x)+SQR(new_y - roger_y));
+// 			}
+
+// 			// we have got the new location, now to set the Roger data-structure accordingly
+// 			roger->button_event = 1;               // say some GUI input happened
+// 			roger->input_mode = 3;                 // we want the ball input mode
+// 			roger->key_event = 49;                 // say we want a ball (pressed the "1" key)
+// 			roger->button_reference[X] = new_x;    // pass the actual new center location (x)
+// 			roger->button_reference[Y] = new_y;    // pass the actual new center location (y)
+// 			reset_flag = 1;                        // set the reset_flag
+// 			return 1;                              // return true (time to reset)
+// 		}
+// 	} else {
+// 		converged_counter = 0;                     // not converged this time-step, so reset
+// 	}
+// 	return 0;                                      // return false (not reseting)
+// }
+
 
 /* 
 * Helper function to saves the current policy to
@@ -43,9 +116,15 @@ int file_exists(const char *filename)
 void SaveQTable(int fileNum, double *q_table, int numStates, int num_actions, char *fileName) {
 	int i, j; 
 	char buf[100];
+	// printf("s1\n");
 	memset(buf, '\0', sizeof(buf));
+	// printf("s2\n");
+	// printf("%s\n", fileName);
+	// printf("%d\n", fileNum);
 	sprintf(buf, fileName, fileNum);
-	printf("Saving Q-table: %s\n", buf);
+	// printf("s3\n");
+	// printf("Saving Q-table: %s\n", buf);
+	// printf("s4\n");
     FILE* fp = fopen(buf, "w");
 	if (!fp) {
 		printf("Error saving policy to file%s\n", buf);
@@ -282,11 +361,14 @@ int num_actions;
 	printf("rand_num: %.4f\n", rand_num);
 
     if (rand_num > epsilon) {
+    	// printf("Selecting random number\n");
         selected_action = RandomInt(num_actions - 1);
 		// printf("selected_action: %d\n", selected_action);
     } else {
+    	// printf("Selecting greedy action\n");
         selected_action = GetActionGreedy(state, q_table, num_actions);
     }
+	// printf("Success\n");
 
 	return selected_action;
 }
@@ -447,7 +529,7 @@ int (*reset_func)(Robot* roger, double time, int state, int internal_state[], in
 			selected_action = GetActionEpsilonGreedy_TimeBased(state, counter, q_table, eps_min, eps_max, num_episodes, episode_time_limit, num_actions);
 			
 			
-			// printf("Selected_action: %d, previous_action: %d\n", selected_action, previous_action);
+			printf("Selected_action: %d, previous_action: %d\n", selected_action, previous_action);
 			action_counter = 0;
         } else { // state change if
 			selected_action = previous_action;
@@ -465,12 +547,20 @@ int (*reset_func)(Robot* roger, double time, int state, int internal_state[], in
 		}
     }
 
+    // printf("1\n");
+
 	// check if we should reset the ball
-	int reset_result = (*reset_func)(roger, time, state, internal_state, previous_action, counter, episode_time_limit);
+	// int reset_result = (*reset_func)(roger, time, state, internal_state, previous_action, counter, episode_time_limit);
+	int reset_result = reset_ball_training(roger, time, state, internal_state, previous_action, counter, episode_time_limit);
+
+    // printf("2\n");
+
 
 	if (reset_result && explore) {
 		reset_episode = 1;
 	}
+
+    // printf("3\n");
 
 	// Save off policies every-so-often for the shake of comparison
 	if (((counter % episode_time_limit == 0 && last_saved_policy != counter) || reset_episode) && explore) {

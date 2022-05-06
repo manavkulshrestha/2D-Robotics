@@ -25,8 +25,8 @@
 //   IMPORTANT TIP!!!! consider making sub-folders for different experiments, 
 //                     but be sure to MAKE the folder in the directory first 
 //   MUST end with %d.txt
-#define Q_TABLE_FILE "q_tables/q_table_%d.txt"
-#define CONVG_ACT 0
+#define Q_TABLE_FILE "../q_tables/q_table_%d.txt"
+#define CONVG_ACT 2
 // end RLToolKit parameters
 
 double proj_nine_q_table[NSTATES][NACTIONS] = {0.0};
@@ -44,7 +44,7 @@ void random_location();
 int reset_ball_training();
 void LoadLearnedQTable();
 
-int search_track(), track(), chase_touch();
+int search_track(), track(), chase_touch(), chase();
 
 int VFClosure(), TFClosure();
 
@@ -223,7 +223,7 @@ double time;
 			t[i] = estimated_theta[i];
 
 		// set te kappa, gradient descent step-size
-		kappa = 0.8;
+		kappa = 0.5;
 
 		// the closed form solutions to the navigation function used
 		//     to control arm contacts
@@ -391,7 +391,7 @@ double time;
 		double j_fm[2] = {0.0};
 		
 		// set te kappa, gradient descent step-size
-		kappa = 0.8;
+		kappa = 0.5;
 
 		//using diff temp for thetas
 		double t[3];
@@ -506,6 +506,7 @@ int episode_len;                        // max episode length (ms)
 	static int reset_flag = 0;          // reset book-keeping variables per episode
 	static int converged_counter = 0;   // count how long CONVG_ACT is converged
 	
+	// printf("b1\n");
 
 	// can include more complex behavior here, depending on your task
 	if (reset_flag == TRUE) {
@@ -513,9 +514,15 @@ int episode_len;                        // max episode length (ms)
 		converged_counter = 0;
 	}
 
+	// printf("b2\n");
+
+
 	// get Roger's current locations
 	roger_x = roger->base_position[X];
 	roger_y = roger->base_position[Y];
+
+	// printf("b3\n");
+
 	
 	// check if the internal state of CONVG_ACT is converged OR
 	//     we have reached the max number of actions per episode
@@ -666,15 +673,15 @@ double time;
 	int (*actions[NACTIONS])(Robot* roger, double errors[NDOF], double time);
     double (*rewards[1])(int state, int previous_state, int previous_action, int internal_state[NSTATES]);
 // a = 0.001,0.2. k = 0.8,.999
-    double alpha=0.001, gamma=0.99;         // learning rate, reward discounting factor
+    double alpha=0.1, gamma=0.8;         // learning rate, reward discounting factor
     int reward_num = 1;                   // total number of rewards used (MUST BE AT LEAST ONE)
-    double default_reward = -0.01;         // reward applied for every decision 
+    double default_reward = 0;         // reward applied for every decision 
 	double end_episode_reward = 100;     // reward given for successful episode termination
 	double end_episode_penalty = -100;   // penalty for not ending the episode in success
 
-	actions[0] = chase_touch;
-	actions[1] = TFClosure;
-	actions[2] = VFClosure;
+	actions[0] = search_track;
+	actions[1] = chase;
+	actions[2] = TFClosure;
 	// as many as you are planning to use ...
 
 	rewards[0] = NothingReward; // or define our own...
@@ -685,7 +692,7 @@ double time;
 	//     eps is the probability of a greedy action
 	double e_max = 0.8;
     double eps_min = 0.2, eps_max = e_max-eps_min;
-    int max_time_per_episode = 5000;                 // maximum number of time-steps per episode
+    int max_time_per_episode = 2000;                 // maximum number of time-steps per episode
     int num_episodes = 1000000;                         // number of training episodes
 
     // learn a policy, saves off a q-table file after every episode
@@ -695,7 +702,7 @@ double time;
 	Q_Learning(roger, time, alpha, gamma, actions, rewards, default_reward, NACTIONS, NSTATES, 
 		reward_num, proj_nine_q_table, max_time_per_episode, num_episodes, eps_min, eps_max,
 		CONVG_ACT, end_episode_reward, end_episode_penalty, Q_TABLE_FILE,
-		reset_ball_training);
+		&reset_ball_training);
 	/************************************************************/
 	
     
