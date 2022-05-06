@@ -36,8 +36,17 @@ double proj_seven_q_table2[NSTATES][NACTIONS] = {0.0};
 #define LEFTSHO_ERROR_OFFSET 4
 #define RIGHTSH_ERROR_OFFSET 6
 
-#define DIST(X,Y) sqrt(SQR(X)+SQR(Y));
-#define DIST2(X1, Y1, X2, Y2) DIST(X1-X2, Y1-Y2);
+#define DIST2(x1, y1, x2, y2) sqrt(SQR((x1)-(x2))+SQR((y1)-(y2)))
+
+int stereo_observation(), fwd_arm_kinematics(), inv_arm_kinematics(), inv_arm_kinematics_errors();
+void construct_wTb(), matrix_mult(), copy_errors();
+void submit_errors(), add_error_arrays();
+int search_track();
+
+
+// double distance2(double x1, double y1, double x2, double y2) {
+// 	return sqrt(SQR(x1-x2)+SQR(y1-y2));
+// }
 
 int subarreq(double *arr1, double *arr2, int start, int end, double tol) {
 	for (int i=start; i<=end; i++)
@@ -47,11 +56,7 @@ int subarreq(double *arr1, double *arr2, int start, int end, double tol) {
 	return TRUE;
 }
 
-int search_track2(Robot *roger, double errors[NDOF], double time) {
-	return search_track(roger, time, errors);
-}
-
-int approach(roger, errors, time)
+int chase(roger, errors, time)
 Robot* roger;
 double errors[NDOF];
 double time;
@@ -71,7 +76,7 @@ double time;
 	aerrors[Y] = obs.pos[Y] - roger->base_position[Y];
 
 	return_status = TRANSIENT;
-	errors[0] = DIST(aerrors[X], aerrors[Y]);
+	errors[0] = DIST2(aerrors[X], 0, aerrors[Y], 0);
 	// errors[1] = atan2(aerrors[Y], aerrors[X]);
 
 	if (subarreq(roger->base_position, obs.pos, X, Y, 0.01))
@@ -97,16 +102,36 @@ double time;
  
 	double aerrors[NARMS][NDOF] = {0};
 
+	int can_reach = FALSE;
 	for (int limb=0; limb<NARMS; limb++)
-		if (inv_arm_kinematics_errors(roger, limb, obs.pos[X], obs.pos[Y], aerrors[limb]))
+		if (can_reach = (inv_arm_kinematics_errors(roger, limb, obs.pos[X], obs.pos[Y], aerrors[limb]) | can_reach))
 			return_status = TRANSIENT;
+
+	if (!can_reach)
+		return_status = NO_REFERENCE;
 
 	add_error_arrays(aerrors[0], aerrors[1], errors);
 
-	for (int limb=0; limb<NARMS; limb++)
-		for (int fi=X; fi<=Y; fi++)
-			if (roger->ext_force[limb][fi] > 0)
+	for (int limb=0; limb<NARMS; limb++) {
+		for (int fi=X; fi<=Y; fi++) {
+
+			double arms_b[NARMS][4], arms_w[NARMS][4], wTb[4][4];
+			arms_b[LEFT][2] = 0;
+			arms_b[LEFT][3] = 1;
+			arms_b[RIGHT][2] = 0;
+			arms_b[RIGHT][3] = 1; 
+			construct_wTb(roger->base_position, wTb);
+
+			fwd_arm_kinematics(roger, limb, &arms_b[limb][X], &arms_b[limb][Y]);
+			matrix_mult(4, 4, wTb, 1, arms_b[limb], arms_w[limb]);
+
+			double hand_ball_dist = DIST2(arms_w[limb][X], arms_w[limb][Y], obs.pos[X], obs.pos[Y]);
+
+			if (roger->ext_force[limb][fi] > 0 && hand_ball_dist < 2*(R_BALL+R_JOINT)) {//experimentally determined
 				return (return_status = CONVERGED);
+			}
+		}
+	}
 
 	return return_status;
 }
@@ -116,6 +141,7 @@ Robot* roger;
 double errors[NDOF];
 double time;
 {
+	static int return_status = NO_REFERENCE;
 
 	for (int i=0; i<NDOF; i++)
 		errors[i] = 0;
@@ -123,13 +149,28 @@ double time;
 	double chase_errors[NDOF], touch_errors[NDOF], st_errors[NDOF];
 
 	double st_status = search_track(roger, st_errors, time);
-	double chase_status = approach(roger, chase_errors, time);
+	double chase_status = chase(roger, chase_errors, time);
 	double touch_status = touch(roger, touch_errors, time);
 
 	add_error_arrays(st_errors, touch_errors, errors);
 
-	if (st_status == CONVERGED)
+// a = 0.001,0.2. k = 0.8,.999
+
+	// printf("[%f]\nST: %d\n, C :%d\n, T :%d\n\n", time, st_status, chase_status, touch_status)
+	if (st_status == CONVERGED && touch_status != TRANSIENT)
 		add_error_arrays(chase_errors, errors, errors);
+
+	if (touch_status == NO_REFERENCE) {
+		// printf("[%f] Homing arms\n", time);
+		double home_arm_errors[NDOF];
+		home_arms(roger, home_arm_errors, time);
+		for (int i=4; i<=7; i++)
+			errors[i] = home_arm_errors[i];
+	}
+
+	// printf("ball placed x=%f, y=%f\n", roger->button_reference[X], roger->button_reference[Y]);
+
+	return return_status = (touch_status == CONVERGED ? CONVERGED : TRANSIENT);
 }
 
 /********************************************************************************************************/
@@ -150,6 +191,7 @@ double time;
 	double errors[NDOF];
 
 	chase_touch(roger, errors, time);
+	// printf("%d\n", chase_touch(roger, errors, time));
 	// printf("[%f,%f,%f,%f,%f,%f,%f,%f]\n", errors[0], errors[1], errors[2], errors[3], errors[4], errors[5], errors[6], errors[7]);
 	submit_errors(roger, errors);
 
@@ -160,6 +202,10 @@ double time;
 		base_ball_dist = DIST2(roger->base_position[X], roger->base_position[Y], obs.pos[X], obs.pos[Y]);
 
 		double arms_b[NARMS][4], arms_w[NARMS][4], wTb[4][4];
+		arms_b[LEFT][2] = 0;
+		arms_b[LEFT][3] = 1;
+		arms_b[RIGHT][2] = 0;
+		arms_b[RIGHT][3] = 1; 
 		construct_wTb(roger->base_position, wTb);
 
 		for (int limb=0; limb<NARMS; limb++) {
@@ -169,11 +215,10 @@ double time;
 		}
 	}
 
-	FILE *fptr = fopen("p7.txt", "a");
-	fprintf(fptr, "%f %f %f %f\n", roger->base_position[THETA], base_ball_dist, hand_ball_dist[0], hand_ball_dist[1]);
+	// FILE *fptr = fopen("p7.txt", "a");
+	// fprintf(fptr, "%f %f %f %f\n", roger->base_position[THETA], base_ball_dist, hand_ball_dist[0], hand_ball_dist[1]);
 
-	fclose(fptr);
-	
+	// fclose(fptr);
 
 	/************************************************************/
 

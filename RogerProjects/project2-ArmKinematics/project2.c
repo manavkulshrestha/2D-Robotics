@@ -51,13 +51,13 @@ double *x, *y;
   double t2 = roger->arm_theta[limb][1];
 
   // W frame?
-  // *x = -(L_ARM1*sin(theta1)+L_ARM2*sin(theta1+theta2));
-  // *y = L_ARM1*cos(theta1)+L_ARM2*cos(theta1+theta2);
+  *x = -(L_ARM1*sin(t1)+L_ARM2*sin(t1+t2));
+  *y = L_ARM1*cos(t1)+L_ARM2*cos(t1+t2);
 
-  double limb_mult = (limb == LEFT) ? -1 : 1;
+  // double limb_mult = (limb == LEFT) ? -1 : 1;
 
-  *x = limb_mult*(ARM_OFFSET+L_ARM1*sin(t1)+L_ARM2*sin(t1-t2));
-  *y = L_ARM1*cos(t1)+L_ARM2*cos(t1-t2);
+  // *x = limb_mult*(ARM_OFFSET+L_ARM1*sin(t1)+L_ARM2*sin(t1-t2));
+  // *y = L_ARM1*cos(t1)+L_ARM2*cos(t1-t2);
 }
 
 // submit calculated angles directly to robot-?setpoints structure
@@ -137,8 +137,11 @@ double errors[NDOF];
   double r2, c2, s2_plus, s2_minus, theta2_plus, theta2_minus;
   double k1, k2_plus, k2_minus, alpha_plus, alpha_minus;
   double theta1_plus, theta1_minus;
+  double theta1_plus_dist, theta2_plus_dist, theta1_minus_dist, theta2_minus_dist, plus_dist, minus_dist;
 
   // input (x,y) is in world frame coordinates - map it into the base frame
+
+
   construct_wTb(roger->base_position, wTb);
   HT_invert(wTb,bTw);
 
@@ -152,42 +155,52 @@ double errors[NDOF];
   else ref_b[Y] += ARM_OFFSET;
 
   r2 = SQR(ref_b[X]) + SQR(ref_b[Y]);
-  c2 = (r2-SQR(L_ARM1)-SQR(L_ARM2))/(2*L_ARM1*L_ARM2);
+  c2 = (r2 - SQR(L_ARM1) - SQR(L_ARM2))/(2*L_ARM1*L_ARM2);
 
-  if (c2 < -1 || c2 > 1)
+  //printf("%f\n",c2); 
+  if (c2 < -1 || c2 > 1) {
     return FALSE;
-
-  s2_plus = sqrt(1-SQR(c2));
-  theta2_plus = atan2(s2_plus, c2);
-  k1 = L_ARM1+L_ARM2*c2;
-  k2_plus = L_ARM2*s2_plus;
-  alpha_plus = atan2(k2_plus, k1);
-  theta1_plus = atan2(ref_b[Y], ref_b[X])-alpha_plus;
-
-  s2_minus = -s2_plus;
-  theta2_minus = atan2(s2_minus, c2);
-  k2_minus = L_ARM2*s2_minus;
-  alpha_minus = atan2(k2_minus, k1);
-  theta1_minus = atan2(ref_b[Y], ref_b[X])-alpha_minus;
-
-  double theta1_pos = roger->arm_theta[limb][0];
-  double theta2_pos = roger->arm_theta[limb][1];
-
-  double plus_dist = (theta1_plus-theta1_pos)+(theta2_plus-theta2_pos);
-  double minus_dist = (theta1_minus-theta1_pos)+(theta2_minus-theta2_pos);
-
-  int err_oft = (RIGHTSH_ERROR_OFFSET-LEFTSHO_ERROR_OFFSET)*limb+LEFTSHO_ERROR_OFFSET;
-
-  if (plus_dist < minus_dist) {
-    errors[err_oft] = theta1_plus;
-    errors[err_oft+1] = theta2_plus;
   } else {
-    errors[err_oft] = theta1_minus;
-    errors[err_oft+1] = theta2_minus;
-  }
+    s2_plus = sqrt(1 - (c2*c2));
+    s2_minus = -s2_plus;
 
-  return TRUE;
+    theta2_plus = atan2(s2_plus,c2);
+    theta2_minus = atan2(s2_minus,c2);
+
+    k1 = L_ARM1 + (L_ARM2*c2);
+
+    k2_plus = L_ARM2*s2_plus;
+    k2_minus = L_ARM2*s2_minus;
+
+    alpha_plus = atan2(k2_plus,k1);
+    alpha_minus = atan2(k2_minus, k1);
+
+    theta1_plus = atan2(ref_b[Y], ref_b[X]) - alpha_plus;
+    theta1_minus = atan2(ref_b[Y], ref_b[X]) - alpha_minus;
+
+    theta1_plus_dist = theta1_plus - roger->arm_theta[limb][0];
+    theta1_minus_dist = theta1_minus - roger->arm_theta[limb][0];
+
+    theta2_plus_dist = theta2_plus - roger->arm_theta[limb][1];
+    theta2_minus_dist = theta2_minus - roger->arm_theta[limb][1];
+
+    plus_dist = sqrt(SQR(theta1_plus_dist) + SQR(theta2_plus_dist));
+    minus_dist = sqrt(SQR(theta1_minus_dist) + SQR(theta2_minus_dist));
+
+    int err_oft = (RIGHTSH_ERROR_OFFSET-LEFTSHO_ERROR_OFFSET)*limb+LEFTSHO_ERROR_OFFSET;
+
+    if (plus_dist > minus_dist) {
+      errors[err_oft+1] = theta1_minus;
+      errors[err_oft] = theta2_minus;
+    } else {
+      errors[err_oft+1] = theta1_plus;
+      errors[err_oft] = theta2_plus;
+    }
+    return TRUE;
+  }
+  // printf("x = %6.4lf  y = %6.4lf OUT OF REACH\n", ref_b[X], ref_b[Y]);
 }
+
 
 void add_error_arrays(arr_1, arr_2, out)
 double arr_1[NDOF];

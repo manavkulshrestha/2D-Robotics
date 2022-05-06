@@ -29,6 +29,11 @@
 double proj_five_q_table[NSTATES][NACTIONS] = {0.0};
 /**************************************************************/
 
+int stereo_observation(), fwd_arm_kinematics(), inv_arm_kinematics(), inv_arm_kinematics_errors();
+void construct_wTb(), matrix_mult(), copy_errors();
+void submit_errors(), add_error_arrays();
+int search_track();
+
 #define DRAW_BUFFER_SIZE 1
 #define DRAW_SKIP_SIZE -1
 Observation obuf[DRAW_BUFFER_SIZE];

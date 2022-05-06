@@ -99,6 +99,11 @@ double time;
 	submit_errors(roger, errors);
 }
 
+double drand ( double low, double high )
+{
+  return ( (double)rand() * ( high - low ) ) / (double)RAND_MAX + low;
+}
+
 /************************************************************************/
 void project3_reset(roger)
 Robot* roger;
