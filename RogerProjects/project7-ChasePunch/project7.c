@@ -71,16 +71,22 @@ double time;
 	if (!stereo_observation(roger, time, &obs))
 		return (return_status = NO_REFERENCE);
 
-	double aerrors[2];
-	aerrors[X] = obs.pos[X] - roger->base_position[X];
-	aerrors[Y] = obs.pos[Y] - roger->base_position[Y];
+	// double d_errors[NDOF];
+	// if (search_track(roger, d_errors, time) != CONVERGED)
+	// 	return (return_status = NO_REFERENCE);
+
+	// double aerrors[2];
+	// aerrors[X] = obs.pos[X] - roger->base_position[X];
+	// aerrors[Y] = obs.pos[Y] - roger->base_position[Y];
 
 	return_status = TRANSIENT;
-	errors[0] = DIST2(aerrors[X], 0, aerrors[Y], 0);
+	errors[0] = DIST2(obs.pos[X], obs.pos[Y], roger->base_position[X], roger->base_position[Y]);
 	// errors[1] = atan2(aerrors[Y], aerrors[X]);
 
-	if (subarreq(roger->base_position, obs.pos, X, Y, 0.01))
+	if (errors[0] < 0.8) {
+		errors[0] = 0;
 		return_status = CONVERGED;
+	}
 
 	return return_status;
 }

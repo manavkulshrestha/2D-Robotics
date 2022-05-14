@@ -50,6 +50,73 @@ int VFClosure(), TFClosure();
 
 void pseudoinverse();
 
+void mp_pinv(double j[2], double jpinv_out[2]) {
+    float con = 1/SQR(j[0])+SQR(j[1]);
+
+    jpinv_out[0] = con*j[0];
+    jpinv_out[1] = con*j[1];
+}
+
+int search_track_chase(roger, errors, time)
+Robot* roger;
+double errors[NDOF];
+double time;
+{
+	static int return_status = NO_REFERENCE;
+	// first, do no harm
+	for (int i=0; i<NDOF; ++i) {
+		errors[i] = 0.0;
+	}
+
+	double st_errors[NDOF] = {0}, c_errors[NDOF] = {0};
+	int st_status, c_status;
+
+	if ((st_status = search_track(roger, st_errors, time)) == CONVERGED) {
+		c_status = chase(roger, c_errors, time);
+		add_error_arrays(c_errors, st_errors, errors);
+		return_status = c_status;
+	} else {
+		copy_errors(st_errors, errors);
+		return_status = TRANSIENT;
+	}
+
+	return return_status;
+}
+
+// int search_track_chase_preshape(roger, errors, time)
+// Robot* roger;
+// double errors[NDOF];
+// double time;
+// {
+// 	static int return_status = NO_REFERENCE;
+// 	// first, do no harm
+// 	for (int i=0; i<NDOF; ++i) {
+// 		errors[i] = 0.0;
+// 	}
+
+// 	double st_errors[NDOF] = {0}, c_errors[NDOF] = {0}, v_errors[NDOF] = {0};
+// 	int st_status, c_status, v_status;
+
+// 	if ((st_status = search_track(roger, st_errors, time)) == CONVERGED) {
+// 		c_status = chase(roger, c_errors, time);
+// 		add_error_arrays(c_errors, st_errors, errors);
+
+// 		if (c_status == CONVERGED) {
+// 			v_status = VFClosure(roger, v_errors, time);
+
+// 			add_error_arrays(v_errors, errors, errors);
+// 		}
+
+// 		return_status = c_status;
+// 	} else {
+// 		copy_errors(st_errors, errors);
+// 		return_status = TRANSIENT;
+// 	}
+
+// 	return return_status;
+// }
+
+
 // variable for FClosure procedures
 //    declare at global level to use in reward functions
 double phi_wt;
@@ -148,7 +215,7 @@ double time;
 	int i;
 	double wTb[4][4] = {0.0}, ref_bl[4] = {0.0}, ref_wl[4] = {0.0}, ref_br[4] = {0.0}, ref_wr[4] = {0.0};
 	double lx = 0, ly = 0, rx = 0, ry = 0;
-	double left_arm_forces[2], right_arm_forces[2], base_forces[2], estimated_theta[3];
+	double left_arm_forces[2] = {0}, right_arm_forces[2] = {0}, base_forces[2] = {0}, estimated_theta[3] = {0};
 
 	// first do no harm
 	for (i=0; i<NDOF; ++i) {
@@ -160,14 +227,26 @@ double time;
 	//        and if you can't email Oscar
 	obs_result = stereo_observation(roger, &obs);
 
+	// printf("%f %f %f %f %f %f %d\n", left_arm_forces[0], left_arm_forces[1], right_arm_forces[0], right_arm_forces[1], base_forces[0], base_forces[1], obs_result);
+	// assign the moving average to the value used in the fclosure calculation
+	left_arm_forces[0] = roger->ext_force[LEFT][0];
+	left_arm_forces[1] = roger->ext_force[LEFT][1];
+	right_arm_forces[0] = roger->ext_force[RIGHT][0];
+	right_arm_forces[1] = roger->ext_force[RIGHT][1];
+	base_forces[0] = roger->ext_force_body[0];
+	base_forces[1] = roger->ext_force_body[1];
+
 	// if we see the ball and all contacts are touching the ball and trying to form a FClosure Grasp on the ball
 	if ((fabs(left_arm_forces[0]) > 0 || fabs(left_arm_forces[1]) > 0)
 			&& (fabs(right_arm_forces[0]) > 0 || fabs(right_arm_forces[1]) > 0)
-			&& (fabs(base_forces[0]) > 0 || fabs(base_forces[1]) > 0) 
+			&& (fabs(base_forces[0]) > 0 || fabs(base_forces[1]) > 0)
 			&& obs_result) {
 		
 		// set the return state to transient if we see the ball and are making contact
 		return_state = TRANSIENT;
+
+		// printf("RETURN IS TRANSIENT???\n");
+		// printf("%f %f %f %f %f %f %d\n", left_arm_forces[0], left_arm_forces[1], right_arm_forces[0], right_arm_forces[1], base_forces[0], base_forces[1], obs_result);
 
 		// assign the moving average to the value used in the fclosure calculation
 		left_arm_forces[0] = roger->ext_force[LEFT][0];
@@ -223,7 +302,7 @@ double time;
 			t[i] = estimated_theta[i];
 
 		// set te kappa, gradient descent step-size
-		kappa = 0.5;
+		kappa = 0.9;
 
 		// the closed form solutions to the navigation function used
 		//     to control arm contacts
@@ -234,10 +313,7 @@ double time;
 		j[1] = 2*sin(t[0]-t[2])+2*sin(t[1]-t[2]);
 
 		// get the Penrose pusedo-inverse of the jacobian
-		double jpinv[2][1];
-		pseudoinverse(1, 2, j, jpinv);
-		j_p_inv[0] = jpinv[0][0];
-		j_p_inv[1] = jpinv[1][0];
+		mp_pinv(j, j_p_inv);
 		
 		// calculate the change in angle value needed for control (perform gradient descent)
 		del_theta[0] = -kappa*j_p_inv[0]*phi_wt;
@@ -308,10 +384,7 @@ double time;
 		// home the arms if not transient or converged
 		// TODO put code to home arms here (I used a standalone function to submit
 		//    arm errors for a predefine "home" position)
-		double home_arms_errors[NDOF];
-		home_arms(roger, home_arms_errors, time);
-		for (int t=4; i<=7; i++)
-			errors[i] = home_arms_errors[i];
+		home_arms(roger, errors, time);
 
 	}
 
@@ -391,7 +464,7 @@ double time;
 		double j_fm[2] = {0.0};
 		
 		// set te kappa, gradient descent step-size
-		kappa = 0.5;
+		kappa = 0.9;
 
 		//using diff temp for thetas
 		double t[3];
@@ -407,11 +480,8 @@ double time;
 		j[1] = 2*sin(t[0]-t[2])+2*sin(t[1]-t[2]);
 
 		// get the Penrose pusedo-inverse of the jacobian
-		double jpinv[2][1];
-		pseudoinverse(1, 2, j, jpinv);
-		j_p_inv[0] = jpinv[0][0];
-		j_p_inv[1] = jpinv[1][0];
-		
+		mp_pinv(j, j_p_inv);
+
 		// calculate the change in angle value needed for control (perform gradient descent)
 		del_theta[0] = -kappa*j_p_inv[0]*phi_wv;
 		del_theta[1] = -kappa*j_p_inv[1]*phi_wv;
@@ -474,10 +544,7 @@ double time;
 		// home the arms if not transient or converged
 		// TODO put code to home arms here (I used a standalone function to submit
 		//    arm errors for a predefine "home" position)
-		double home_arms_errors[NDOF];
-		home_arms(roger, home_arms_errors, time);
-		for (int t=4; i<=7; i++)
-			errors[i] = home_arms_errors[i];
+		home_arms(roger, errors, time);
 	}
 	return return_state;
 	
@@ -673,14 +740,15 @@ double time;
 	int (*actions[NACTIONS])(Robot* roger, double errors[NDOF], double time);
     double (*rewards[1])(int state, int previous_state, int previous_action, int internal_state[NSTATES]);
 // a = 0.001,0.2. k = 0.8,.999
-    double alpha=0.1, gamma=0.8;         // learning rate, reward discounting factor
+    double alpha=0.05, gamma=0.999;         // learning rate, reward discounting factor
     int reward_num = 1;                   // total number of rewards used (MUST BE AT LEAST ONE)
     double default_reward = 0;         // reward applied for every decision 
-	double end_episode_reward = 100;     // reward given for successful episode termination
-	double end_episode_penalty = -100;   // penalty for not ending the episode in success
+	int end_episode_reward = 100;     // reward given for successful episode termination
+	int end_episode_penalty = -100;   // penalty for not ending the episode in success
 
-	actions[0] = search_track;
-	actions[1] = chase;
+	// actions[0] = search_track_chase_preshape;
+	actions[0] = search_track_chase;
+	actions[1] = VFClosure;
 	actions[2] = TFClosure;
 	// as many as you are planning to use ...
 
@@ -690,10 +758,10 @@ double time;
     // important note, final eps values is the SUM of eps_min and eps_max
 	//     i.e. eps_min = 0.2 and eps_max = 0.6 results in a final eps value of 0.8
 	//     eps is the probability of a greedy action
-	double e_max = 0.8;
+	double e_max = 0.95;
     double eps_min = 0.2, eps_max = e_max-eps_min;
-    int max_time_per_episode = 2000;                 // maximum number of time-steps per episode
-    int num_episodes = 1000000;                         // number of training episodes
+    int max_time_per_episode = 5000;                 // maximum number of time-steps per episode
+    int num_episodes = 300;                         // number of training episodes
 
     // learn a policy, saves off a q-table file after every episode
 

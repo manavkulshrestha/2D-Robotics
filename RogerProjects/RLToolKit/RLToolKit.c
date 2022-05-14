@@ -121,7 +121,7 @@ void SaveQTable(int fileNum, double *q_table, int numStates, int num_actions, ch
 	// printf("s2\n");
 	// printf("%s\n", fileName);
 	// printf("%d\n", fileNum);
-	sprintf(buf, fileName, fileNum);
+	sprintf(buf, "q_tables/q_table_%d.txt", fileNum);
 	// printf("s3\n");
 	// printf("Saving Q-table: %s\n", buf);
 	// printf("s4\n");
@@ -440,8 +440,6 @@ int (*reset_func)(Robot* roger, double time, int state, int internal_state[], in
 	if (counter % 1000 == 0) {
 		printf("counter: %d ms\n", counter);
 	}
-	
-
 
     // initialize the policy and quality function variables
 	if (!initialized) {

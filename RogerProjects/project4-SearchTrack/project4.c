@@ -104,7 +104,7 @@ double time;
   	errors[BASEROT_ERROR_OFFSET] += errors[EYE_ERROR_OFFSET+i];
   }
 
-  if (fabs(errors[EYE_ERROR_OFFSET])+fabs(errors[EYE_ERROR_OFFSET]) < EPSS)
+  if (fabs(errors[EYE_ERROR_OFFSET])+fabs(errors[EYE_ERROR_OFFSET])+fabs(errors[BASEROT_ERROR_OFFSET]) < EPSS)
   	return (return_status = CONVERGED);
   
   return return_status;
